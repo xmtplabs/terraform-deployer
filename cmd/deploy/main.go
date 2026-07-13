@@ -34,27 +34,32 @@ func main() {
 		log.Fatal("Invalid options", zap.Error(err))
 	}
 
+	updates, err := deployer.NewUpdates(opts.VariableName, opts.VariablePath, opts.VariableValue)
+	if err != nil {
+		log.Fatal("Invalid options", zap.Error(err))
+	}
+
 	runTitle, err := getRunTitle(opts, log)
 	if err != nil {
 		log.Fatal("Could not get run title", zap.Error(err))
 	}
 
 	if opts.DryRun {
-		log.Info("Dry run. Not deploying", zap.Any("opts", opts), zap.String("runTitle", runTitle))
+		log.Info(
+			"Dry run. Not deploying",
+			zap.Any("opts", opts),
+			zap.Any("updates", updates),
+			zap.String("runTitle", runTitle),
+		)
 		return
 	}
 
-	vars := make(map[string]string)
-	for i := range opts.VariableName {
-		vars[opts.VariableName[i]] = opts.VariableValue[i]
-	}
-
-	deployer, err := getDeployer(opts.TFToken, opts.Organization, opts.Workspace, log, opts.Timeout)
+	dep, err := getDeployer(opts.TFToken, opts.Organization, opts.Workspace, log, opts.Timeout)
 	if err != nil {
 		log.Fatal("Could not create deployer", zap.Error(err))
 	}
 
-	err = deployer.Deploy(vars, runTitle)
+	err = dep.Deploy(updates, runTitle)
 	if err != nil {
 		log.Fatal("Could not deploy", zap.Error(err))
 	}
@@ -104,16 +109,8 @@ func validateOptions(opts options.Options) error {
 		return errors.New("organization is required")
 	}
 
-	if len(opts.VariableName) == 0 {
-		return errors.New("at least one variable name is required")
-	}
-	if len(opts.VariableValue) == 0 {
-		return errors.New("at least one variable value is required")
-	}
-
-	if len(opts.VariableValue) != len(opts.VariableName) {
-		return errors.New("variable name and value must be the same length")
-	}
+	// Name/path/value arity is checked by deployer.NewUpdates, which owns the
+	// broadcast rules.
 
 	if opts.VariableValueRequiredPrefix != "" {
 		for i, val := range opts.VariableValue {

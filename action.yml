@@ -22,6 +22,18 @@ inputs:
     description: >
       One or more values to set for each variable (comma-separated, same order as variable-name).
     required: true
+  variable-path:
+    description: >
+      Optional. One or more dotted paths (comma-separated) addressing a string inside an
+      HCL-typed variable, e.g. `a.image` within a map variable. Only that string is replaced;
+      the rest of the variable is preserved. A `*` segment fans the write out across every key
+      at that level, e.g. `*.image` rolls a whole fleet without naming its members.
+
+      When set, the number of paths drives the update count, and a single variable-name or a
+      single variable-value is broadcast across all of them. Paths are replace-only: a path
+      that does not already exist, or that matches no keys, is an error.
+
+      Omit to replace the variable's whole value (the default behavior).
   variable-value-required-prefix:
     description: "Require the value specified in `variable-value` to have the supplied prefix"
   run-title-override:
@@ -38,6 +50,7 @@ runs:
     TERRAFORM_WORKSPACE: ${{ inputs.terraform-workspace }}
     TERRAFORM_VARIABLE_NAME: ${{ inputs.variable-name }}
     TERRAFORM_VARIABLE_VALUE: ${{ inputs.variable-value }}
+    TERRAFORM_VARIABLE_PATH: ${{ inputs.variable-path }}
     VARIABLE_VALUE_REQUIRED_PREFIX: ${{ inputs.variable-value-required-prefix }}
     TERRAFORM_RUN_TITLE: ${{ inputs.run-title-override }}
     TIMEOUT: ${{ inputs.timeout }}
