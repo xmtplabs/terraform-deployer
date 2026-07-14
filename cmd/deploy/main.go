@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os/exec"
 	"strings"
 	"time"
@@ -35,6 +34,11 @@ func main() {
 	}
 
 	updates, err := deployer.NewUpdates(opts.VariableName, opts.VariablePath, opts.VariableValue)
+	if err != nil {
+		log.Fatal("Invalid options", zap.Error(err))
+	}
+
+	err = deployer.ValidatePrefix(updates, opts.VariableValueRequiredPrefix)
 	if err != nil {
 		log.Fatal("Invalid options", zap.Error(err))
 	}
@@ -109,20 +113,9 @@ func validateOptions(opts options.Options) error {
 		return errors.New("organization is required")
 	}
 
-	// Name/path/value arity is checked by deployer.NewUpdates, which owns the
-	// broadcast rules.
-
-	if opts.VariableValueRequiredPrefix != "" {
-		for i, val := range opts.VariableValue {
-			if !strings.HasPrefix(val, opts.VariableValueRequiredPrefix) {
-				return fmt.Errorf(
-					"variable %s:%s does not start with required prefix",
-					opts.VariableName[i],
-					val,
-				)
-			}
-		}
-	}
+	// Name/path/value arity, and the required-prefix check, are both applied to
+	// the updates built by deployer.NewUpdates: one name can map to many values
+	// now, so neither can be checked by walking the raw flag lists in lockstep.
 
 	return nil
 }

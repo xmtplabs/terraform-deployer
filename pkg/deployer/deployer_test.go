@@ -209,6 +209,44 @@ func TestDeployer_Deploy(t *testing.T) {
 			},
 		},
 		{
+			// Writing the variable canonicalizes its formatting, so a roster a
+			// human wrote in the JSON dialect re-renders differently even when
+			// no image moved. Comparing rendered text would call that a change
+			// and auto-apply the whole workspace for nothing.
+			name: "no run when a path update is semantically a no-op",
+			config: &Config{
+				Organization: "organization",
+				Workspace:    "workspace",
+				WaitDelay:    1 * time.Millisecond,
+			},
+			updates: []Update{{Name: "herald_roster", Path: "*.image", Value: "img"}},
+			mock: func(mw *mocks.MockWorkspaces, mv *mocks.MockVariables, mr *mocks.MockRuns) {
+				wsp := &tfe.Workspace{ID: "workspace-id"}
+				mw.EXPECT().Read(gomock.Any(), "organization", "workspace").Return(wsp, nil)
+
+				mv.EXPECT().
+					List(gomock.Any(), "workspace-id", listOpts(1)).
+					Return(&tfe.VariableList{
+						Items: []*tfe.Variable{
+							{
+								ID:  "var-id",
+								Key: "herald_roster",
+								HCL: true,
+								// Same images the update sets, different dialect
+								// and whitespace to what we would render.
+								Value: `{"a": {"image": "img", "archil_disk": "d-a"},
+								         "b": {"image": "img", "archil_disk": "d-b"}}`,
+							},
+						},
+					}, nil)
+
+				// No Update, no Create: gomock fails the test if either fires.
+			},
+			expect: func(t *testing.T, err error) {
+				require.NoError(t, err)
+			},
+		},
+		{
 			name: "variable not found is never an upsert",
 			config: &Config{
 				Organization: "organization",
@@ -507,12 +545,13 @@ func TestRenderVar_Scenarios(t *testing.T) {
 			require.NoError(t, err)
 
 			d := &Deployer{log: zap.NewNop()}
-			out, err := d.renderVar(&tfe.Variable{
+			out, changed, err := d.renderVar(&tfe.Variable{
 				Key:   "herald_roster",
 				HCL:   true,
 				Value: roster3,
 			}, updates)
 			require.NoError(t, err)
+			require.True(t, changed)
 
 			require.Equal(t, tc.expect, imagesOf(t, out))
 			// The disks belong to Terraform, not to us; a roll must never touch them.
@@ -521,6 +560,52 @@ func TestRenderVar_Scenarios(t *testing.T) {
 				"b": "herald-dev/herald-b",
 				"c": "herald-dev/herald-c",
 			}, disksOf(t, out))
+		})
+	}
+}
+
+func TestValidatePrefix(t *testing.T) {
+	tcs := []struct {
+		name    string
+		updates []Update
+		prefix  string
+		wantErr string
+	}{
+		{
+			name:    "no prefix configured",
+			updates: []Update{{Name: "v", Value: "anything"}},
+		},
+		{
+			name:    "all values carry the prefix",
+			updates: []Update{{Name: "v", Value: "ghcr.io/xmtp/a"}, {Name: "w", Value: "ghcr.io/xmtp/b"}},
+			prefix:  "ghcr.io/xmtp/",
+		},
+		{
+			// One name, many values: the shape broadcast mode introduces. The
+			// prefix check used to index the name list in lockstep with the
+			// value list, so a bad value in any position but the first panicked
+			// with an index-out-of-range instead of reporting the bad value.
+			name: "one name, many values, a later one is bad",
+			updates: []Update{
+				{Name: "herald_roster", Path: "a.image", Value: "ghcr.io/xmtplabs/herald-lite@sha256:good"},
+				{Name: "herald_roster", Path: "b.image", Value: "evil.io/bad"},
+			},
+			prefix:  "ghcr.io/xmtplabs/herald-lite@",
+			wantErr: "variable herald_roster:evil.io/bad does not start with required prefix",
+		},
+	}
+
+	for _, tc := range tcs {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := ValidatePrefix(tc.updates, tc.prefix)
+			if tc.wantErr != "" {
+				require.EqualError(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
 		})
 	}
 }

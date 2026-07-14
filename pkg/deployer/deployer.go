@@ -98,6 +98,29 @@ func at(list []string, i int) string {
 	return list[i]
 }
 
+// ValidatePrefix rejects any update whose value does not carry the required
+// prefix, guarding against a malformed image being written to the workspace.
+//
+// It runs over the updates rather than the raw flag lists: one variable name
+// can map to many values now, so nothing can walk names and values in lockstep.
+func ValidatePrefix(updates []Update, prefix string) error {
+	if prefix == "" {
+		return nil
+	}
+
+	for _, u := range updates {
+		if !strings.HasPrefix(u.Value, prefix) {
+			return fmt.Errorf(
+				"variable %s:%s does not start with required prefix",
+				u.Name,
+				u.Value,
+			)
+		}
+	}
+
+	return nil
+}
+
 type Config struct {
 	Organization string
 	Workspace    string
@@ -201,12 +224,12 @@ func (d *Deployer) updateVar(vars []*tfe.Variable, name string, updates []Update
 		return false, fmt.Errorf("variable %s not found", name)
 	}
 
-	value, err := d.renderVar(v, updates)
+	value, changed, err := d.renderVar(v, updates)
 	if err != nil {
 		return false, err
 	}
 
-	if value == v.Value {
+	if !changed {
 		d.log.Info("variable already up to date", zap.String("variable", name))
 		return false, nil
 	}
@@ -224,39 +247,41 @@ func (d *Deployer) updateVar(vars []*tfe.Variable, name string, updates []Update
 	return true, nil
 }
 
-// renderVar computes a variable's new value from the updates targeting it.
-func (d *Deployer) renderVar(v *tfe.Variable, updates []Update) (string, error) {
+// renderVar computes a variable's new value from the updates targeting it, and
+// reports whether that value actually moved.
+func (d *Deployer) renderVar(v *tfe.Variable, updates []Update) (string, bool, error) {
 	if whole := wholeValueUpdate(updates); whole != nil {
 		if len(updates) > 1 {
-			return "", fmt.Errorf(
+			return "", false, fmt.Errorf(
 				"variable %s has both a whole-value update and a path update; pick one",
 				v.Key,
 			)
 		}
-		return whole.Value, nil
+		return whole.Value, whole.Value != v.Value, nil
 	}
 
 	if !v.HCL {
-		return "", fmt.Errorf(
+		return "", false, fmt.Errorf(
 			"variable %s is not HCL-typed, so it has no paths to address",
 			v.Key,
 		)
 	}
 
-	val, err := parseHCLValue(v.Key, v.Value)
+	current, err := parseHCLValue(v.Key, v.Value)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
+	val := current
 	for _, u := range updates {
 		segments, err := splitPath(u.Path)
 		if err != nil {
-			return "", err
+			return "", false, err
 		}
 
 		next, written, err := setPath(val, segments, u.Value)
 		if err != nil {
-			return "", errors.Wrapf(err, "setting %s.%s", v.Key, u.Path)
+			return "", false, errors.Wrapf(err, "setting %s.%s", v.Key, u.Path)
 		}
 		val = next
 
@@ -272,7 +297,13 @@ func (d *Deployer) renderVar(v *tfe.Variable, updates []Update) (string, error) 
 		)
 	}
 
-	return renderHCLValue(val), nil
+	// Compare the parsed values, not the rendered text. Writing the variable
+	// canonicalizes its formatting, so a roster a human wrote with different
+	// whitespace — or in the JSON dialect, which is also valid HCL — would
+	// re-render differently even when every image is unchanged. Comparing text
+	// would read that as a change and fire an auto-applied run, which applies
+	// the whole workspace, for a deploy that moved nothing.
+	return renderHCLValue(val), !val.RawEquals(current), nil
 }
 
 // listVars pages through every variable on the workspace.
