@@ -32,8 +32,9 @@ type Options struct {
 	Organization                string        `short:"o" long:"org"                            env:"TERRAFORM_ORGANIZATION"         description:"Terraform Organization"`
 	VariableName                CSV           `short:"n" long:"variable-name"                  env:"TERRAFORM_VARIABLE_NAME"        description:"Terraform Variable Name"`
 	VariableValue               CSV           `short:"v" long:"variable-value"                 env:"TERRAFORM_VARIABLE_VALUE"       description:"Value to set for the Terraform Variable named in VariableName"`
+	VariablePath                CSV           `short:"p" long:"variable-path"                  env:"TERRAFORM_VARIABLE_PATH"        description:"Dotted path to a string inside an HCL variable, e.g. a.image. A * segment fans out across every key at that level. Omit to replace the whole value."`
 	RunTitle                    string        `          long:"run-title"                      env:"TERRAFORM_RUN_TITLE"            description:"Title for the Terraform Run. Defaults to latest commit message if unset."`
 	DryRun                      bool          `          long:"dry-run"                                                             description:"Do not actually run the Terraform Run. Useful for testing."`
 	VariableValueRequiredPrefix string        `          long:"variable-value-required-prefix" env:"VARIABLE_VALUE_REQUIRED_PREFIX" description:"If set, the VariableValue must start with this prefix"`
-	Timeout                     time.Duration `          long:"timeout"                        env:"TIMEOUT"                        description:"Run timeout"                                                              default:"0"`
+	Timeout                     time.Duration `          long:"timeout"                        env:"TIMEOUT"                        description:"Run timeout"                                                                                                                                         default:"0"`
 }
