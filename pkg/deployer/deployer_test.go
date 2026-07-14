@@ -576,9 +576,12 @@ func TestValidatePrefix(t *testing.T) {
 			updates: []Update{{Name: "v", Value: "anything"}},
 		},
 		{
-			name:    "all values carry the prefix",
-			updates: []Update{{Name: "v", Value: "ghcr.io/xmtp/a"}, {Name: "w", Value: "ghcr.io/xmtp/b"}},
-			prefix:  "ghcr.io/xmtp/",
+			name: "all values carry the prefix",
+			updates: []Update{
+				{Name: "v", Value: "ghcr.io/xmtp/a"},
+				{Name: "w", Value: "ghcr.io/xmtp/b"},
+			},
+			prefix: "ghcr.io/xmtp/",
 		},
 		{
 			// One name, many values: the shape broadcast mode introduces. The
@@ -587,7 +590,11 @@ func TestValidatePrefix(t *testing.T) {
 			// with an index-out-of-range instead of reporting the bad value.
 			name: "one name, many values, a later one is bad",
 			updates: []Update{
-				{Name: "herald_roster", Path: "a.image", Value: "ghcr.io/xmtplabs/herald-lite@sha256:good"},
+				{
+					Name:  "herald_roster",
+					Path:  "a.image",
+					Value: "ghcr.io/xmtplabs/herald-lite@sha256:good",
+				},
 				{Name: "herald_roster", Path: "b.image", Value: "evil.io/bad"},
 			},
 			prefix:  "ghcr.io/xmtplabs/herald-lite@",
